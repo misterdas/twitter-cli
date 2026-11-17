@@ -1112,12 +1112,17 @@ class TwitterClient:
             # so sending the cookie here does not weaken it — it is only the
             # difference between a header that works and a 404 on every
             # header-gated GET (SearchTimeline, Followers, Following, Likes).
-            ct_headers["Cookie"] = self._cookie_string or (
+            # Send the session cookie ONLY to x.com, never to the CDN script
+            # fetch below (credential hygiene, per PR #99).
+            auth_cookie = self._cookie_string or (
                 "auth_token=%s; ct0=%s" % (self._auth_token, self._ct0)
             )
             home_page = cffi_session.get(
-                "https://x.com/home", headers=ct_headers, timeout=10,
+                "https://x.com/home",
+                headers={**ct_headers, "Cookie": auth_cookie},
+                timeout=10,
             )
+            home_page.raise_for_status()
             home_page_response = bs4.BeautifulSoup(home_page.content, "html.parser")
             ondemand_url = get_ondemand_file_url(response=home_page_response)
             if not ondemand_url:
@@ -1125,6 +1130,7 @@ class TwitterClient:
             ondemand_file = cffi_session.get(
                 ondemand_url, headers=ct_headers, timeout=10,
             )
+            ondemand_file.raise_for_status()
             self._client_transaction = ClientTransaction(
                 home_page_response=home_page_response,
                 ondemand_file_response=ondemand_file.text,
